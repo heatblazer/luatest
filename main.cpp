@@ -18,6 +18,7 @@ extern "C"
 class LuaContext
 {
 
+    int m_level;
     lua_State *L;
 
 public:
@@ -26,17 +27,39 @@ public:
 
     bool  AddScript(const char* file);
 
-    template<typename T> inline __attribute__((unused)) T get(__attribute__((unused))const std::string& val) {}
+    template<typename T> inline T get(const std::string& val)
+    {
+        T result;
+
+        if (!L)
+        {
+            printf("Script is not loaded (%s)\r\n", val.c_str());
+            return  lua_getdefault<T>();
+        }
+
+        if (lua_gettostack(val))
+        {
+            result = lua_get<T>(val);
+        }
+        else
+        {
+            result = lua_getdefault<T>();
+        }
+
+
+        lua_pop(L, m_level + 1);
+        return  result;
+    }
 
     template<typename T> inline __attribute__((unused)) T lua_get(__attribute__((unused))const std::string& val) {}
 
     template<typename T> inline __attribute__((unused)) T lua_getdefault(__attribute__((unused))const std::string& val) {}
 
-    template<typename T> inline __attribute__((unused)) T lua_gettostack(__attribute__((unused))const std::string& val) {}
+    bool lua_gettostack(const std::string& val);
 
 };
 
-LuaContext::LuaContext()
+LuaContext::LuaContext() : m_level{0}
 {
     L = luaL_newstate();
 }
@@ -63,6 +86,8 @@ bool  LuaContext::AddScript(const char* file)
 
 // specialization for different ret tupes
 
+
+
 template <>
 inline std::string LuaContext::lua_get(const std::string& str)
 {
@@ -74,6 +99,45 @@ inline bool LuaContext::lua_get(const std::string& str)
 {
     return false;
 }
+
+bool LuaContext::lua_gettostack(const std::string& str)
+{
+
+    m_level = 0;
+    std::string var = "";
+    for(unsigned int i =0; i < str.size(); ++i)
+    {
+        if (str.at(i) == '.')
+        {
+            if (m_level == 0)
+                lua_getglobal(L, str.c_str());
+            else
+                lua_getfield(L, -1, str.c_str());
+
+            if (lua_isnil(L, -1))
+                return  false;
+            else
+            {
+                var = "";
+                m_level++;
+            }
+        }
+        else
+        {
+            var += str.at(i);
+        }
+    }
+    if (m_level == 0)
+        lua_getglobal(L, str.c_str());
+    else
+        lua_getfield(L, -1, str.c_str());
+
+    if (lua_isnil(L, -1))
+        return  false;
+
+    return true;
+}
+
 
 
 int main(int argc, char** argv)
